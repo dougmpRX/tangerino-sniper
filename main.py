@@ -1,58 +1,97 @@
 from datetime import date, timedelta
 from selenium import webdriver
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-
-#Credentials
-EMPLOYEES_CODE = 'YOUR_CODE_HERE'
-PIN = 'YOUR_PIN_HERE'
-
-
-today = date.today()
-
-delta = 1 if today.weekday() != 0 else 3
-
-targetDay = today - timedelta(delta)
-
-print("Today is", today.strftime("%d/%m/%Y"))
-print("Target day is", targetDay.strftime("%d/%m/%Y"))
+# CONFIGURATION
+EMPLOYEES_CODE = 'YOUR_CODE'
+PIN = 'YOUR_PIN'
+WINDOW_WIDTH = 830
+WINDOW_HEIGHT = 290
+URL = 'https://app.tangerino.com.br/Tangerino/pages/LoginPage/wicket:pageMapName/wicket-0'
 
 driver = webdriver.Chrome()
-driver.get('https://app.tangerino.com.br/Tangerino/?wicket:bookmarkablePage=wicket-2:com.frw.tangerino.web.pages.web.cadastro.LoginFuncionarioPage&wicket:interface=wicket-2:12::INewBrowserWindowListener::')
+wait = WebDriverWait(driver, 10)
+actions = ActionChains(driver)
 
-form1 = driver.find_element(By.NAME, value='codigoEmpregador').send_keys(EMPLOYEES_CODE)
+def getTargetDay():
+    today = date.today()
+    delta = 1 if today.weekday() != 0 else 3
+    targetDay = today - timedelta(delta)
+    return targetDay
 
-form2 = driver.find_element(By.NAME, value='pin')
-form2.send_keys(PIN)
-form2.send_keys(Keys.RETURN)
+def formatTargetDay(char):
+    return getTargetDay().strftime('%d' + char + '%m' + char + '%Y')
 
-try:
-    waitCondition = EC.presence_of_element_located((By.NAME, 'hiddenEmployeeData'))
-    WebDriverWait(driver, 5).until(waitCondition)
-    
+def formatToday(char):
+    return date.today().strftime('%d' + char + '%m' + char + '%Y')
+
+def browseTo(url):
+    driver.get(url)
+
+def tangerinoLogin(employeesCode, pin):
+    middleButton = driver.find_element(By.PARTIAL_LINK_TEXT, value='Colaborador')
+    actions.click(middleButton).perform()
+
+    employeesCodeForm = driver.find_element(By.NAME, value='codigoEmpregador')
+    passwordForm = driver.find_element(By.NAME, value='pin')
+    actions.send_keys_to_element(employeesCodeForm, employeesCode).send_keys_to_element(passwordForm, pin, Keys.RETURN).perform()
+
+def waitForLoginToComplete():
+    try:
+        waitCondition = EC.presence_of_element_located((By.NAME, 'hiddenEmployeeData'))
+        wait.until(waitCondition)
+    except:
+        print("LOGIN FAILED")
+        browserClose()
+
+def clickOnApropriacaoHoras():
     driver.find_element(By.XPATH, '//div[1]/nav/a[3]').click()
 
-    table_rows = driver.find_elements(By.XPATH, '//table/tbody/tr')
-    num_rows = len (table_rows)
-    print(repr(num_rows) + " rows in table")
+def filterDaysByTargetDay():
+    initialDateInput = driver.find_element(By.NAME, 'containerPorPeriodo:dataInicio')
+    finalDateInput = driver.find_element(By.NAME, 'containerPorPeriodo:dataFim')
+    queryButton = driver.find_element(By.NAME, 'consultar')
+    
+    actions.send_keys_to_element(initialDateInput, Keys.BACKSPACE * 10, formatTargetDay('/'))
+    actions.send_keys_to_element(finalDateInput, Keys.BACKSPACE * 10, formatTargetDay('/'))
+    actions.click(queryButton).pause(2).perform()
 
-    for row in table_rows:
-        if targetDay.strftime("%d/%m/%Y") in row.text:
-            driver.set_window_size(830, 290)
-            driver.execute_script('document.getElementsByClassName("nav-rapida menu_lateral")[0].style.display = "none"')
-            driver.execute_script('document.getElementsByClassName("corpo")[0].style.padding = 0')
-            driver.execute_script('document.getElementsByClassName("corpo")[0].style.margin = 0')
-            
-            location = row.location
-            x, y = location['x'], location['y']
-            driver.execute_script('window.scrollTo({}, {})'.format(x,y))
-            
-            row.screenshot('row.png')
-            driver.save_screenshot('Tangerino [{}].png'.format(targetDay.strftime("%d-%m-%Y")))
-except:
-    print("ERROR: Row not found")
-finally:
+def prepareWindowFrame(width, height):    
+    driver.execute_script('document.getElementsByClassName("nav-rapida menu_lateral")[0].style.display = "none"')
+    driver.execute_script('document.getElementsByClassName("corpo")[0].style.padding = 0')
+    driver.execute_script('document.getElementsByClassName("corpo")[0].style.margin = 0')
+    driver.set_window_size(width, height)
+
+def prepareTablePosition():
+    tableRows = driver.find_elements(By.XPATH, '/html/body/div[1]/div[2]/div/div[2]/span/form/div[2]/div[2]/table/tbody/tr')
+    location = tableRows[0].location
+    x, y = location['x'], location['y']
+    driver.execute_script('window.scrollTo({}, {})'.format(x,y))
+        
+def takeTableScreenshot():
+    driver.save_screenshot('Tangerino [{}].png'.format(formatTargetDay("-")))
+
+def browserClose():
     driver.quit()
+
+# PROGRAM START
+print('TODAY IS', formatToday("/"))
+print('TARGET DAY IS', formatTargetDay("/"))
+
+try:
+    browseTo(URL)
+    tangerinoLogin(EMPLOYEES_CODE, PIN)
+    waitForLoginToComplete()
+    clickOnApropriacaoHoras()
+    filterDaysByTargetDay()
+    prepareWindowFrame(WINDOW_WIDTH, WINDOW_HEIGHT)
+    prepareTablePosition()
+    takeTableScreenshot()
+except:
+    print('ERROR: TABLE NOT FOUND')
+finally:
+    browserClose()
